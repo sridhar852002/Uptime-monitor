@@ -1,8 +1,16 @@
 # AI Collaboration Log
 
-Used **Cursor (Composer)** throughout the project.
+## AI tech stack
 
-I kept everything in a single conversation instead of starting new chats. Backend, frontend, Docker, documentation, debugging, and final review all stayed in the same context. This log summarizes that process in the order it happened.
+| Tool | Model | Role |
+|------|-------|------|
+| ChatGPT | GPT-5.5 | Read the assignment, clarify requirements, plan architecture, and draft the prompts/instructions for implementation |
+| Cursor | Composer 2.5 | Primary implementation — backend, frontend, Docker, README, and most of this log |
+| Cursor | Opus 4.8 | Final verification — cross-checked the repo, README, and AI_LOG against assignment requirements |
+
+**How they worked together:** I started in ChatGPT 5.5 to understand what the assignment actually wanted and how to structure the build (stack choice, phased plan, prompt strategy). I then took those instructions into Cursor Composer 2.5 for implementation. Before submitting, I used Cursor Opus 4.8 to review everything critically — does it run, does the docs match the code, does the AI_LOG tell the truth.
+
+Composer handled most of the coding in one continuous Cursor thread so architectural decisions, implementation, and fixes shared the same context. ChatGPT and Opus were separate review/planning passes on top of that.
 
 ---
 
@@ -10,7 +18,7 @@ I kept everything in a single conversation instead of starting new chats. Backen
 
 ## Initial collaboration prompt
 
-Before writing any code, I wanted the AI to behave like a reviewer instead of a code generator.
+Used with **Cursor Composer 2.5** (wording originally shaped in ChatGPT 5.5). Before writing any code, I wanted the AI to behave like a reviewer instead of a code generator.
 
 ```text
 You are my senior technical partner.
@@ -70,7 +78,7 @@ Document test steps: https://example.com (UP) and http://localhost:9999 (DOWN).
 
 ## Final review
 
-This prompt found the event loop issue described later in this document.
+Run with **Cursor Opus 4.8**. This prompt found the event loop issue described later in this document.
 
 ```text
 Final review mode.
@@ -99,7 +107,7 @@ It also pointed out:
 
 ## AI_LOG review
 
-Before finishing, I reviewed the documentation itself.
+Run with **Cursor Opus 4.8**. Before finishing, I reviewed the documentation itself.
 
 ```text
 Treat AI_LOG.md as evidence of my engineering process.
