@@ -1,6 +1,8 @@
 # Uptime Monitor
 
-A lightweight full-stack uptime monitor that periodically pings registered URLs and displays whether each one is up or down, along with response time.
+A lightweight full-stack uptime monitor: register URLs, ping them every ~60 seconds, and view UP/DOWN status with latest response time on a simple dashboard.
+
+**Stack:** FastAPI · PostgreSQL · React · Docker Compose
 
 ## One-line setup
 
@@ -8,11 +10,28 @@ A lightweight full-stack uptime monitor that periodically pings registered URLs 
 docker compose up --build
 ```
 
-Then open:
+**Prerequisites:** Docker Desktop (or Docker Engine + Compose v2) running.
 
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- Health check: http://localhost:8000/health
+First build may take a few minutes. When all services are healthy:
+
+| Service | URL |
+|---------|-----|
+| Dashboard | http://localhost:3000 |
+| Backend API | http://localhost:8000 |
+| Health check | http://localhost:8000/health |
+
+Stop everything:
+
+```bash
+docker compose down
+```
+
+Wipe data and start fresh:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
 
 ## Architecture
 
@@ -23,7 +42,7 @@ Browser (React dashboard)
         v
    FastAPI backend
         |
-        +--> REST API (register/list/delete URLs)
+        +--> REST API (register / list / delete URLs)
         |
         +--> In-process scheduler (ping every 60s)
         |
@@ -31,10 +50,8 @@ Browser (React dashboard)
    PostgreSQL
         |
         +--> monitored_urls
-        +--> health_checks (status, response time, timestamp)
+        +--> health_checks (status code, response time, timestamp)
 ```
-
-**Components**
 
 | Layer | Tech | Role |
 |-------|------|------|
@@ -43,86 +60,103 @@ Browser (React dashboard)
 | Database | PostgreSQL 16 | URL registry + check history |
 | Orchestration | Docker Compose | One-command local startup |
 
-## Design trade-offs
+Each health check stores: HTTP status code (or error), response time (ms), UP/DOWN flag, and timestamp.
 
-| Decision | Why |
-|----------|-----|
-| PostgreSQL | Production-like persistence; fits multi-container Compose |
-| In-process scheduler | Assignment scale (~50 URL checks/minute total) doesn't need a job queue |
-| HTTP polling | Simpler than WebSockets; checks already run every 60s |
-| FastAPI | Rapid development, async support, clear API validation |
-| Single backend process | Intentional MVP scope; easy to run and review |
+## API
 
-See `AI_LOG.md` for rejected alternatives (Redis, Celery, WebSockets) and reasoning.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Liveness probe |
+| `GET` | `/urls` | List monitored URLs with latest check |
+| `POST` | `/urls` | Add URL (`{"url": "https://example.com"}`) — runs an immediate check |
+| `DELETE` | `/urls/{id}` | Remove a URL and its history |
+| `GET` | `/urls/{id}/history` | Last 20 checks for a URL (API only; UI shows latest) |
+
+Scheduler interval defaults to 60 seconds (`CHECK_INTERVAL_SECONDS` in `docker-compose.yml`).
 
 ## Testing steps
 
-1. Start the stack with `docker compose up --build`.
-2. Open http://localhost:3000 in your browser.
-3. Add a healthy URL:
+These are the exact steps reviewers can follow locally.
+
+1. Run `docker compose up --build`.
+2. Open http://localhost:3000.
+3. **Healthy URL**
    - Enter `https://example.com`
    - Click **Monitor URL**
-   - Expected: status shows **UP** with a response time in milliseconds
-4. Add a broken URL:
+   - Expected: **UP**, response time in ms, recent "Last checked" time
+4. **Broken URL**
    - Enter `http://localhost:9999`
    - Click **Monitor URL**
-   - Expected: status shows **DOWN** (connection refused)
-5. Wait up to 60 seconds and confirm the dashboard auto-refreshes with updated check timestamps.
+   - Expected: **DOWN** (connection refused from the backend container)
+5. Wait up to 60 seconds — the dashboard auto-refreshes every 10s and scheduler timestamps should update without a manual reload.
+
+### API smoke test
+
+```bash
+# Healthy URL
+curl -s -X POST http://localhost:8000/urls \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com"}' | python3 -m json.tool
+
+# Broken URL
+curl -s -X POST http://localhost:8000/urls \
+  -H "Content-Type: application/json" \
+  -d '{"url":"http://localhost:9999"}' | python3 -m json.tool
+
+# List all with latest status
+curl -s http://localhost:8000/urls | python3 -m json.tool
+```
 
 ### Clean clone verification
 
 ```bash
 git clone <your-repo-url>
-cd <repo>
+cd <repo-name>
 docker compose down -v
 docker compose up --build
 ```
 
-Then repeat the testing steps above.
+Then repeat the testing steps above. Replace `<your-repo-url>` and `<repo-name>` after publishing to GitHub.
 
-### API smoke test
+## Design trade-offs
 
-```bash
-curl -X POST http://localhost:8000/urls \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://example.com"}'
+| Decision | Why |
+|----------|-----|
+| PostgreSQL | Production-like persistence; fits multi-container Compose |
+| In-process scheduler | ~50 URL checks/minute total doesn't need a job queue |
+| HTTP polling (10s) | Simpler than WebSockets; backend checks run every 60s |
+| FastAPI | Async-friendly, fast to build, clear request validation |
+| Single backend process | Intentional MVP scope |
 
-curl http://localhost:8000/urls
-```
+Rejected alternatives (Redis, Celery, WebSockets, APScheduler) and the reasoning are in [`AI_LOG.md`](AI_LOG.md).
 
 ## Known limitations
 
-This is an intentional MVP—not production monitoring.
+Intentional MVP scope — not production monitoring.
 
-- Single backend instance; scheduler is in-process
-- No authentication or multi-tenant isolation
-- UP/DOWN is based on HTTP status < 500; reachable 4xx responses count as UP
-- No retry/backoff strategy beyond the next 60s cycle
-- No alerting (email/Slack/PagerDuty)
-- Adding a URL runs an immediate check inline, so registering a slow, unreachable URL can take up to the 10s ping timeout to respond
-- No historical charts—latest check per URL only (history API exists but UI doesn't visualize it)
+- Single backend instance; scheduler runs in-process
+- No authentication
+- UP/DOWN uses HTTP status `< 500`; reachable 4xx responses count as UP
+- No alerting or retry/backoff beyond the next 60s cycle
+- Adding a URL runs an immediate inline ping — a slow/dead URL can take up to the 10s timeout before the POST responds
+- UI shows latest check only (`/history` API exists but is not visualized)
 - Optimized for dozens of URLs, not thousands
-- Frontend polls; no WebSocket push
-
-These are scope choices, not oversights. See `AI_LOG.md` for the decision process.
 
 ## Deployment sketch
-
-For a small MVP, a simple cloud topology would be:
 
 ```text
 Internet
    |
 Load Balancer
    |
-   +--> Frontend container (static React build)
+   +--> Frontend (static React build)
    |
-   +--> Backend container (FastAPI + scheduler)
+   +--> Backend (FastAPI + in-process scheduler)
    |
    +--> Managed PostgreSQL
 ```
 
-Example Terraform-style outline:
+Hypothetical Terraform-style outline:
 
 ```hcl
 resource "aws_ecs_service" "backend" {
@@ -146,14 +180,14 @@ resource "aws_db_instance" "postgres" {
 }
 ```
 
-One backend task runs both the API and the in-process scheduler. Scale-out would require moving checks to a dedicated worker—out of scope for this assignment.
+One backend task runs both the API and scheduler. Horizontal scale would need a dedicated check worker — out of scope here.
 
 ## Project structure
 
 ```text
-/backend     FastAPI API + health-check scheduler
-/frontend    React dashboard
+/backend          FastAPI API + scheduler
+/frontend         React dashboard
 docker-compose.yml
 README.md
-AI_LOG.md
+AI_LOG.md         AI collaboration log (assignment deliverable)
 ```
