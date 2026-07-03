@@ -110,13 +110,13 @@ curl -s http://localhost:8000/urls | python3 -m json.tool
 ### Clean clone verification
 
 ```bash
-git clone <your-repo-url>
-cd <repo-name>
+git clone https://github.com/sridhar852002/Uptime-monitor
+cd Uptime-monitor
 docker compose down -v
 docker compose up --build
 ```
 
-Then repeat the testing steps above. Replace `<your-repo-url>` and `<repo-name>` after publishing to GitHub.
+Then repeat the testing steps above.
 
 ## Design trade-offs
 
